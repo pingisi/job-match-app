@@ -12,6 +12,7 @@ export default function App() {
   const [country, setCountry] = useState('')
   const [province, setProvince] = useState('')
   const [hoursOld, setHoursOld] = useState(336)
+  const [minScore, setMinScore] = useState(50)
   const [jobs, setJobs] = useState<Job[]>([])
   const [error, setError] = useState<string | null>(null)
 
@@ -22,6 +23,15 @@ export default function App() {
     { label: 'Last week', value: 168 },
     { label: 'Last 2 weeks', value: 336 },
     { label: 'Last month', value: 720 },
+  ]
+
+  const SCORE_THRESHOLDS = [
+    { label: 'Any', value: 0 },
+    { label: '30%+', value: 30 },
+    { label: '50%+', value: 50 },
+    { label: '70%+', value: 70 },
+    { label: '80%+', value: 80 },
+    { label: '90%+', value: 90 },
   ]
 
   const handleParsed = (p: ResumeProfile) => {
@@ -61,6 +71,7 @@ export default function App() {
     setCountry('')
     setProvince('')
     setHoursOld(336)
+    setMinScore(50)
     setError(null)
   }
 
@@ -139,6 +150,33 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Min score picker */}
+                <div className="mt-5">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Minimum match score
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {SCORE_THRESHOLDS.map((s) => (
+                      <button
+                        key={s.value}
+                        onClick={() => setMinScore(s.value)}
+                        className={[
+                          'px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
+                          minScore === s.value
+                            ? s.value >= 80
+                              ? 'bg-green-600 text-white border-green-600'
+                              : s.value >= 50
+                              ? 'bg-yellow-500 text-white border-yellow-500'
+                              : 'bg-slate-500 text-white border-slate-500'
+                            : 'bg-white text-slate-600 border-slate-300 hover:border-blue-400',
+                        ].join(' ')}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <button
                   onClick={handleSearch}
                   disabled={!country}
@@ -199,7 +237,7 @@ export default function App() {
 
         {/* ── RESULTS ── */}
         {step === 'results' && profile && (
-          <JobResults jobs={jobs} profile={profile} onNewSearch={handleNewSearch} />
+          <JobResults jobs={jobs} profile={profile} initialMinScore={minScore} onNewSearch={handleNewSearch} />
         )}
       </main>
     </div>

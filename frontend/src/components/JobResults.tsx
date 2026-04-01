@@ -6,11 +6,12 @@ import JobCard from './JobCard'
 interface Props {
   jobs: Job[]
   profile: ResumeProfile
+  initialMinScore?: number
   onNewSearch: () => void
 }
 
-export default function JobResults({ jobs, profile, onNewSearch }: Props) {
-  const [minScore, setMinScore] = useState(0)
+export default function JobResults({ jobs, profile, initialMinScore = 0, onNewSearch }: Props) {
+  const [minScore, setMinScore] = useState(initialMinScore)
 
   const filtered = jobs.filter((j) => j.score >= minScore)
 
