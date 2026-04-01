@@ -15,6 +15,7 @@ class SearchRequest(BaseModel):
     location: str
     country: str
     province: Optional[str] = None
+    hours_old: int = 336  # default: last 2 weeks
 
 
 @router.post("/search")
@@ -36,6 +37,7 @@ async def search_jobs(request: SearchRequest):
                 search_term=profile.search_term or " ".join(profile.job_titles[:1]),
                 location=location,
                 country=request.country,
+                hours_old=request.hours_old,
             ),
         )
     except Exception as exc:
@@ -44,7 +46,7 @@ async def search_jobs(request: SearchRequest):
     if not jobs:
         return {"jobs": [], "total": 0}
 
-    semaphore = asyncio.Semaphore(3)
+    semaphore = asyncio.Semaphore(8)
 
     async def score_with_semaphore(job: dict) -> dict:
         async with semaphore:

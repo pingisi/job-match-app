@@ -71,22 +71,26 @@ def _safe_amount(val) -> Optional[float]:
         return None
 
 
-def scrape_jobs(search_term: str, location: str, country: str) -> list[dict]:
+def scrape_jobs(search_term: str, location: str, country: str, hours_old: int = 336) -> list[dict]:
     from jobspy import scrape_jobs as jobspy_scrape
 
     country_indeed = COUNTRY_TO_INDEED.get(country, "USA")
 
-    site_names = ["indeed", "linkedin", "glassdoor"]
+    site_names = ["indeed", "linkedin", "glassdoor", "google"]
     if country in ("Canada", "United States"):
         site_names.append("zip_recruiter")
+
+    # Google Jobs needs its own search term with location baked in
+    google_search_term = f"{search_term} jobs in {location}"
 
     try:
         df = jobspy_scrape(
             site_name=site_names,
             search_term=search_term,
+            google_search_term=google_search_term,
             location=location,
-            results_wanted=5,
-            hours_old=168,
+            results_wanted=100,
+            hours_old=hours_old,
             country_indeed=country_indeed,
             linkedin_fetch_description=True,
             description_format="markdown",

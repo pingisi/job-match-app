@@ -11,8 +11,18 @@ export default function App() {
   const [profile, setProfile] = useState<ResumeProfile | null>(null)
   const [country, setCountry] = useState('')
   const [province, setProvince] = useState('')
+  const [hoursOld, setHoursOld] = useState(336)
   const [jobs, setJobs] = useState<Job[]>([])
   const [error, setError] = useState<string | null>(null)
+
+  const DATE_RANGES = [
+    { label: 'Today', value: 24 },
+    { label: 'Last 2 days', value: 48 },
+    { label: 'Last 3 days', value: 72 },
+    { label: 'Last week', value: 168 },
+    { label: 'Last 2 weeks', value: 336 },
+    { label: 'Last month', value: 720 },
+  ]
 
   const handleParsed = (p: ResumeProfile) => {
     setProfile(p)
@@ -33,6 +43,7 @@ export default function App() {
         location: province ? `${province}, ${country}` : country,
         country,
         province: province || null,
+        hours_old: hoursOld,
       })
       setJobs(data.jobs)
       setStep('results')
@@ -49,6 +60,7 @@ export default function App() {
     setProfile(null)
     setCountry('')
     setProvince('')
+    setHoursOld(336)
     setError(null)
   }
 
@@ -106,6 +118,27 @@ export default function App() {
                   onProvinceChange={setProvince}
                 />
 
+                {/* Date range picker */}
+                <div className="mt-5">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Job posted within</label>
+                  <div className="flex flex-wrap gap-2">
+                    {DATE_RANGES.map((r) => (
+                      <button
+                        key={r.value}
+                        onClick={() => setHoursOld(r.value)}
+                        className={[
+                          'px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
+                          hoursOld === r.value
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-slate-600 border-slate-300 hover:border-blue-400',
+                        ].join(' ')}
+                      >
+                        {r.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <button
                   onClick={handleSearch}
                   disabled={!country}
@@ -151,7 +184,7 @@ export default function App() {
 
             {/* Pulsing site labels */}
             <div className="flex flex-wrap justify-center gap-2">
-              {['Indeed', 'LinkedIn', 'Glassdoor', 'ZipRecruiter'].map((site, i) => (
+              {['Indeed', 'LinkedIn', 'Glassdoor', 'Google', 'ZipRecruiter'].map((site, i) => (
                 <span
                   key={site}
                   className="px-3 py-1 bg-white border border-slate-200 rounded-full text-xs text-slate-600 shadow-sm animate-pulse"
