@@ -1,12 +1,16 @@
 import os
 import json
 import re
-from groq import AsyncGroq
+import asyncio
+from groq import AsyncGroq, RateLimitError
 from pydantic import BaseModel, Field
 from typing import Optional
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-MODEL_NAME = os.getenv("MODEL_NAME", "llama-3.3-70b-versatile")
+# Large model for quality tasks (resume parse, cover letter, rewrite)
+QUALITY_MODEL = os.getenv("MODEL_NAME", "llama-3.3-70b-versatile")
+# Fast model for bulk scoring — 20K TPM limit vs 6K TPM for 70b
+SCORING_MODEL = "llama-3.1-8b-instant"
 
 _client = AsyncGroq(api_key=GROQ_API_KEY)
 
@@ -46,18 +50,25 @@ def _extract_json(text: str) -> dict:
     raise ValueError(f"No valid JSON found in LLM response: {stripped[:300]}")
 
 
-async def _groq_generate(prompt: str, use_json_format: bool = False) -> str:
+async def _groq_generate(prompt: str, use_json_format: bool = False, model: str = QUALITY_MODEL) -> str:
     kwargs: dict = {
-        "model": MODEL_NAME,
+        "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.3,
-        "max_tokens": 2048,
+        "max_tokens": 1024,
     }
     if use_json_format:
         kwargs["response_format"] = {"type": "json_object"}
 
-    response = await _client.chat.completions.create(**kwargs)
-    return response.choices[0].message.content or ""
+    for attempt in range(3):
+        try:
+            response = await _client.chat.completions.create(**kwargs)
+            return response.choices[0].message.content or ""
+        except RateLimitError:
+            if attempt == 2:
+                raise
+            await asyncio.sleep(10 * (attempt + 1))  # 10s, 20s backoff
+    return ""
 
 
 async def parse_resume_profile(text: str) -> ResumeProfile:
@@ -77,31 +88,25 @@ Return ONLY a valid JSON object with this exact structure, no extra text:
 Resume:
 {truncated}"""
 
-    raw = await _groq_generate(prompt, use_json_format=True)
+    raw = await _groq_generate(prompt, use_json_format=True, model=QUALITY_MODEL)
     data = _extract_json(raw)
     return ResumeProfile(**data)
 
 
 async def score_job(profile: ResumeProfile, job: dict) -> dict:
-    description = (job.get("description") or "")[:2000]
+    # Keep description short — 8b model, maximise throughput
+    description = (job.get("description") or "")[:600]
 
-    prompt = f"""You are a job matching expert. Rate how well this candidate matches the job posting.
-Return ONLY a valid JSON object:
-{{"score": 75, "reason": "Brief 1-2 sentence explanation of the match"}}
+    prompt = f"""Score 0-100 how well this candidate matches the job. Return JSON only: {{"score": 75, "reason": "one sentence"}}
 
-Candidate:
-- Skills: {", ".join(profile.skills[:20])}
-- Roles: {", ".join(profile.job_titles[:5])}
-- Experience: {profile.years_experience} years
-- Education: {profile.education}
-- Summary: {profile.summary}
+Candidate skills: {', '.join(profile.skills[:10])}
+Candidate roles: {', '.join(profile.job_titles[:3])}
+Experience: {profile.years_experience}yr
 
-Job: {job.get("title", "")} at {job.get("company", "")}
-Description: {description}
+Job: {job.get('title', '')} at {job.get('company', '')}
+{description}"""
 
-Score 0-100 (100 = perfect match). Return JSON only."""
-
-    raw = await _groq_generate(prompt, use_json_format=True)
+    raw = await _groq_generate(prompt, use_json_format=True, model=SCORING_MODEL)
     data = _extract_json(raw)
     score = max(0, min(100, int(data.get("score", 0))))
     return {"score": score, "reason": data.get("reason", "")}
@@ -124,7 +129,7 @@ Job Description: {description}
 
 Cover Letter:"""
 
-    return await _groq_generate(prompt, use_json_format=False)
+    return await _groq_generate(prompt, use_json_format=False, model=QUALITY_MODEL)
 
 
 async def rewrite_resume(original_text: str, job: dict) -> str:
@@ -145,4 +150,4 @@ Original Resume:
 
 Rewritten Resume:"""
 
-    return await _groq_generate(prompt, use_json_format=False)
+    return await _groq_generate(prompt, use_json_format=False, model=QUALITY_MODEL)
