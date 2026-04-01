@@ -3,16 +3,27 @@ import json
 import re
 import asyncio
 from groq import AsyncGroq, RateLimitError
+from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 from typing import Optional
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+
 # Large model for quality tasks (resume parse, cover letter, rewrite)
 QUALITY_MODEL = os.getenv("MODEL_NAME", "llama-3.3-70b-versatile")
 # Fast model for bulk scoring — 20K TPM limit vs 6K TPM for 70b
 SCORING_MODEL = "llama-3.1-8b-instant"
 
-_client = AsyncGroq(api_key=GROQ_API_KEY)
+# OpenRouter fallback models (free tier)
+OR_SCORING_MODEL  = "meta-llama/llama-3.1-8b-instruct:free"
+OR_QUALITY_MODEL  = "meta-llama/llama-3.3-70b-instruct:free"
+
+_groq = AsyncGroq(api_key=GROQ_API_KEY)
+_openrouter = AsyncOpenAI(
+    api_key=OPENROUTER_API_KEY or "none",
+    base_url="https://openrouter.ai/api/v1",
+) if OPENROUTER_API_KEY else None
 
 
 class ResumeProfile(BaseModel):
@@ -60,14 +71,28 @@ async def _groq_generate(prompt: str, use_json_format: bool = False, model: str 
     if use_json_format:
         kwargs["response_format"] = {"type": "json_object"}
 
+    # Determine fallback model for OpenRouter
+    or_model = OR_SCORING_MODEL if model == SCORING_MODEL else OR_QUALITY_MODEL
+
     for attempt in range(3):
         try:
-            response = await _client.chat.completions.create(**kwargs)
+            response = await _groq.chat.completions.create(**kwargs)
             return response.choices[0].message.content or ""
         except RateLimitError:
+            # Try OpenRouter fallback if key is configured
+            if _openrouter is not None:
+                or_kwargs = {**kwargs, "model": or_model}
+                if use_json_format:
+                    # OpenRouter free models don't support json_object mode
+                    or_kwargs.pop("response_format", None)
+                try:
+                    or_response = await _openrouter.chat.completions.create(**or_kwargs)
+                    return or_response.choices[0].message.content or ""
+                except Exception:
+                    pass  # fall through to backoff
             if attempt == 2:
                 raise
-            await asyncio.sleep(10 * (attempt + 1))  # 10s, 20s backoff
+            await asyncio.sleep(8 * (attempt + 1))  # 8s, 16s backoff
     return ""
 
 
